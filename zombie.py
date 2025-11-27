@@ -50,7 +50,7 @@ class Zombie:
 
         self.tx, self.ty = 1000, 1000
         # 여기를 채우시오
-        self.get_patrol_locations = [(43, 274), (1118, 274), (1050, 494), (575, 804), (235, 991), (575, 804), (1050, 494),
+        self.patrol_locations = [(43, 274), (1118, 274), (1050, 494), (575, 804), (235, 991), (575, 804), (1050, 494),
 (1118, 274)]
         self.loc_no =0
 
@@ -108,11 +108,17 @@ class Zombie:
 
     def move_little_to(self, tx, ty):
         # 여기를 채우시오.
-        self.dir = math.atan2(self.ty - self.y, self.tx - self.x)
+        self.dir = math.atan2(ty - self.y, tx - self.x)
         d = RUN_SPEED_PPS * game_framework.frame_time
         self.x += d * math.cos(self.dir)
         self.y += d * math.sin(self.dir)
         pass
+
+    def run_away_little_to(self, tx, ty):
+        self.dir =  -math.atan2(ty - self.y, tx - self.x)
+        d = RUN_SPEED_PPS * game_framework.frame_time
+        self.x += d * math.cos(self.dir)
+        self.y += d * math.sin(self.dir)
 
 
 
@@ -158,10 +164,30 @@ class Zombie:
 
     def get_patrol_location(self):
         # 여기를 채우시오.
-        self.tx,self.ty = self.patrol_location[self.loc_no]
+        self.tx,self.ty = self.patrol_locations[self.loc_no]
         self.loc_no = (self.loc_no +1) % len(self.patrol_locations)
         return BehaviorTree.SUCCESS
         pass
+
+    def more_ball(self):
+        if self.ball_count >= common.boy.ball_count:
+            return BehaviorTree.SUCCESS
+        else:
+            return BehaviorTree.FAIL
+
+    def less_ball(self):
+        if self.ball_count < common.boy.ball_count:
+            return BehaviorTree.SUCCESS
+        else:
+            return BehaviorTree.FAIL
+
+    def run_away(self, r = 0.5):
+        self.state = 'Walk'
+        self.run_away_little_to(common.boy.x, common.boy.y)
+        if self.distance_less_than(common.boy.x, common.boy.y, self.x, self.y, r):
+            return BehaviorTree.RUNNING
+        else:
+            return BehaviorTree.SUCCESS
 
 
     def build_behavior_tree(self):
@@ -177,10 +203,17 @@ class Zombie:
         a4 = Action('소년 추적', self.move_to_boy)
         chase_if_boy_nearby = Sequence('소년이 근처에 있으면 추적',c1,a4)
 
-        chase_or_wander = Selector('소년이 가까이 있으면 추적하고, 아니면 배회',chase_boy, wander)
+        chase_or_wander = Selector('소년이 가까이 있으면 추적하고, 아니면 배회',chase_if_boy_nearby, wander)
 
+        more_ball = Condition('소년보다 공이 많은가',self.more_ball)
+        less_ball = Condition('소년보다 공이 적은가',self.less_ball)
+        a6 = Action('소년에게 도망',self.run_away)
+        chase_if_more_ball = Sequence('소년보다 공이 많으면 추적',more_ball,a4)
+        chase_if_less_ball = Sequence('소년보다 공이 적으면 도망',less_ball,a6)
+        think = Selector('소년보다 공이 많으면 추적 아니면 도망',chase_if_more_ball,chase_if_less_ball)
+        check_nearby_and_think = Sequence('소년이 근처에 있으면 생각',c1,think)
         a5 = Action('순찰 위치 가져오기',self.get_patrol_location)
-        root = patrol = Sequence('순찰', a5, a2)
+        root = patrol = Selector('소년과의 거리 검사 또는 배회',check_nearby_and_think , wander)
         self.bt = BehaviorTree(root)
         pass
 
